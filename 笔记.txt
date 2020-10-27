@@ -1,0 +1,55 @@
+Converter.py
+
+main中读取args，创建converter对象，再调用对象的generate_osm()函数即可
+
+  1. 创建converter对象
+  创建converter对象时，内部又有若干个对象
+  首先创建opendrive对象
+  opendrive对象通过opendrive.py中定义的OpenDrive类完成创建
+    利用XMLParser类读取xodr文件并解析
+    这里编写的xmlparser.py使用了lxml中的etree
+    XMLParser对象初始化时使用etree.parse读取文件，并得到tree的root
+    这里面有3个方法，parse_roads、parse_lane和parse_junctions。其中parse_lane只在parse_roads中被调用，parse_roads和parse_junctions在外部被调用。
+
+  XMLParser初始化之后，外部立刻调用该类的两个方法，parse_roads和parse_junctions。
+
+    parse_roads返回值是一个字典。该函数对xodr用for循环对每个road进行遍历。
+      首先获得road标签的name，length，id，junction四个属性。例如<road name="Road 0" length="3.9372349644416303e+1" id="0" junction="-1">
+      随后获取road下面的子标签link。然后根据link的具体内容，设置predecessor和successor对象。这两个对象是通过road.py中RoadLink类实现的。该类下没有方法，仅有element_type、element_id和contact_point三个基本数据。
+      设置好这两个对象后，获取road下另一个子标签planView。对planView中的每个geometry进行遍历，首先获取s, x, y, hdg, length这五个关键参数，随后判断geometry中的tag类型是line, arc还是spiral，往plan_view变量中插入对象。这种对象有三种可能，分别是RoadLine, RoadArc或RoadSpiral，在roadgeometry.py中有相关定义。
+      随后获取road下的elevationProfile子标签，遍历其中的每个elevation，创建RoadElevation对象并插入到elevations列表变量中。
+      再之后获取road下的lanes标签，以及lanes的laneSection子标签，并根据laneSection中是否有center、left和right，对其中的lane进行遍历，调用parse_lane后将返回值分别插入center, left和right变量，利用这三个变量构造LaneSection对象，进而构造Lanes对象。这两个对象在lane.py中有定义。至此，可以使用name, length, id, junction, predecessor, successor, plan_view, elevations, lanes这些变量，构造Road对象，在ret值的id下标中插入该对象。对每条road遍历完毕后，得到的ret字典被返回。
+
+    parse_junctions返回值也是一个字典。该函数对xodr用for循环对每个junction进行遍历。
+      首先通过junction的name和id构造Junction对象，这在junction.py中有相关定义。
+      随后对这个junction中的每个connection进行遍历，对connection的id, incomingRoad, connectingRoad, contactPoint获取后，构建一个Connection对象，随后调用Jucntion中的add_connection方法，加入该add_connection并做部分相关操作。
+      遍历完所有connection后得到的最终Juntion对象会以id为下标插入ret字典中。遍历完所有junction后返回ret。
+
+    随后，对junctions每个元素遍历
+      每个junction中，对junction中每个connection遍历，将roads中下标为connecting_road的元素的is_connection值设为真，并设置好junction的max_arcrad值。
+
+    最终通过roads构建RoadMap对象。该对象在roadmap.py中定义。
+
+  opendrive创建完毕后，设置好self.scale, minx, miny, maxx, maxy, self.min_distance这几个变量
+  node_id初值设为0，ways初始化为dict，nodes初始化为list
+  同时利用pyqtree建立一个spindex四叉树
+  随后调用convert()函数，这个函数分为若干个步骤
+
+    1.1 将所有道路转换成osm中nodes+ways的组合
+    tqdm是进度条，可以忽略。
+    对opendrive中的roads逐个循环
+    way_nodes_id初始设为空list
+    对road中每个point，执行add_node函数
+    如果add_node返回的new_node_id不在way_nodes_id中，则way_nodes_id调用append方法加入该new_node_id
+    对roads中的point便利完毕后，设置ways的宽度
+
+    1.2 处理junctions
+    根据junction的lane_link长度，分类处理T形、X形或更多交叉路口的junction
+
+    
+  2. generate_osm()函数理解
+  根据converter中解析采样的nodes和ways，按照osm的XML格式输出
+
+
+
+road取点步骤
