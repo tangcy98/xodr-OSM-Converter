@@ -152,120 +152,6 @@ class Converter(object):
         else:
             return -1
 
-    def handle_Tshape(self, junction):
-        # A T shape junction would be like:
-        # ----1---*---2----
-        #         |
-        #         |
-        #         3
-        #         4
-        #         |
-        #         |
-        #
-        # we need to get the * point
-        # so we use four points to interpolate
-
-        is_Tshape_junction = False
-
-        lane_link = junction.lane_link
-        lines = list()
-        slopes = list()
-        line1_nodes = list()
-        line2_nodes = list()
-        incomings = list()
-        ends = list()
-
-        for incoming_road, connecting_road, contact_point in lane_link:
-            # if incoming_road == '3':
-            #     a = 2
-            inn = self.opendrive.roads[incoming_road].ln
-            con = self.opendrive.roads[connecting_road].ln
-            min = inn if inn < con else con
-
-            for i in range(min):
-                connecting_way = self.opendrive.roads[connecting_road].start_lway_id + i
-                incoming_way = self.opendrive.roads[incoming_road].start_lway_id + i
-                
-                contact_node_id = self.ways[connecting_way].nodes_id[0 if contact_point == 'start' else -1]
-                way_end = self.way_end_to_point(contact_node_id, incoming_way)
-
-                node1 = self.nodes[self.ways[incoming_way].nodes_id[way_end]]
-                node2 = self.nodes[self.ways[incoming_way].nodes_id[(way_end + 1 if way_end == 0 else way_end - 1)]]
-                lines.append([node1, node2])
-                k = (node1.y - node2.y) / (node1.x - node2.x)
-                slopes.append(k)
-
-            inn = self.opendrive.roads[incoming_road].rn
-            con = self.opendrive.roads[connecting_road].rn
-            min = inn if inn < con else con
-
-            for i in range(min):
-                connecting_way = self.opendrive.roads[connecting_road].start_rway_id + i
-                incoming_way = self.opendrive.roads[incoming_road].start_rway_id + i
-                
-                contact_node_id = self.ways[connecting_way].nodes_id[0 if contact_point == 'start' else -1]
-                way_end = self.way_end_to_point(contact_node_id, incoming_way)
-
-                node1 = self.nodes[self.ways[incoming_way].nodes_id[way_end]]
-                node2 = self.nodes[self.ways[incoming_way].nodes_id[(way_end + 1 if way_end == 0 else way_end - 1)]]
-                lines.append([node1, node2])
-                k = (node1.y - node2.y) / (node1.x - node2.x)
-                slopes.append(k)
-
-        cross = line_cross(lines[0], lines[1])
-        if fabs(slopes[0]-slopes[1]) < 1e-5:
-            is_Tshape_junction = True
-        elif fabs(slopes[2]-slopes[1]) < 1e-5:
-            is_Tshape_junction = True
-            lane_link[2], lane_link[0] = lane_link[0], lane_link[2] 
-        elif fabs(slopes[0]-slopes[2]) < 1e-5:
-            is_Tshape_junction = True
-            lane_link[2], lane_link[1] = lane_link[0], lane_link[1] 
-        else:
-            return False
-
-
-        for incoming_road, connecting_road, contact_point in lane_link[0:2]:
-
-            contact_node_id = self.ways[connecting_road].nodes_id[0 if contact_point == 'start' else -1]
-            way_end = self.way_end_to_point(contact_node_id, incoming_road)
-
-            line1_nodes.append(
-                self.nodes[self.ways[incoming_road].nodes_id[way_end]])
-            # self.ways[incoming_road].nodes_id[way_end] = self.node_id
-            incomings.append(incoming_road)
-            ends.append(way_end)
-
-        # 2. add the contact point (3,4) of a T junction
-        for incoming_road, connecting_road, contact_point in lane_link[2:]:
-            contact_node_id = self.ways[connecting_road].nodes_id[0 if contact_point == 'start' else -1]
-            way_end = self.way_end_to_point(contact_node_id, incoming_road)
-
-            line2_nodes.append(
-                self.nodes[self.ways[incoming_road].nodes_id[way_end]])
-            line2_nodes.append(
-                self.nodes[self.ways[incoming_road].nodes_id[(way_end + 1 if way_end == 0 else way_end - 1)]])
-
-            incomings.append(incoming_road)
-            ends.append(way_end)
-
-            # self.ways[incoming_road].nodes_id[way_end] = self.node_id
-
-        # calculate the cross point of line(1,2) and line(3,4)
-        cross_point = line_cross(line1_nodes, line2_nodes)
-        cross_point.z = (line1_nodes[0].z + line1_nodes[1].z + line2_nodes[0].z + line2_nodes[1].z) /4
-
-        line1_nodes.extend(line2_nodes)
-        self.min_distance_to_center = min(point_distance(
-            cross_point, p) for p in line1_nodes)
-
-        new_node_id = self.add_node(cross_point.x, cross_point.y, cross_point.z, min([junction.max_arcrad, self.min_distance_to_center]))
-        
-        for incoming_road, way_end in zip(incomings, ends):
-            self.ways[incoming_road].nodes_id[way_end] = new_node_id
-
-        return is_Tshape_junction
-
 
     def handle_Tshape1(self, junction):
         # A T shape junction would be like:
@@ -286,20 +172,24 @@ class Converter(object):
         line1_nodes = list()
         incomings = list()
         ends = list()
+
+
+
         for connection in junction.connections:
             contact_point = connection.contact_point
             incoming_road = connection.incoming_road
             connecting_road = connection.connecting_road
-            inn = self.opendrive.roads[incoming_road].ln
-            con = self.opendrive.roads[connecting_road].ln
-            min = inn if inn < con else con
+            
 
-            for i in range(min):
-                connecting_way = self.opendrive.roads[connecting_road].start_lway_id + i
-                incoming_way = self.opendrive.roads[incoming_road].start_lway_id + i
-
-                # 1. add the contact point (1,2) of a T junction
-                if self.ways[connecting_way].style == 'line':
+            # 1. add the contact point (1,2) of a T junction
+            if self.ways[self.opendrive.roads[connecting_road].start_lway_id].style == 'line':
+                inn = self.opendrive.roads[incoming_road].ln
+                con = self.opendrive.roads[connecting_road].ln
+                min = inn if inn < con else con
+                for i in range(min):
+                    line1_nodes.append(list())
+                    connecting_way = self.opendrive.roads[connecting_road].start_lway_id + i
+                    incoming_way = self.opendrive.roads[incoming_road].start_lway_id + i
                     contact_node_id = self.ways[connecting_way].nodes_id[0 if contact_point == 'start' else -1]
                     way_end = self.way_end_to_point(contact_node_id, incoming_way)
                     line1_nodes.append(
@@ -308,33 +198,22 @@ class Converter(object):
                     ends.append(way_end)
                     # search and delete the incoming road in lane_link we just used
 
-                    # TODO
-                    for i in range(len(lane_link)):
-                        if lane_link[i][0] == incoming_way:
-                            del lane_link[i]
-                            break
-
-
-
-            # unchanged
-            # 1. add the contact point (1,2) of a T junction
-            if self.ways[connection.connecting_road].style == 'line':
-                incoming_road = connection.incoming_road
-                connecting_road = connection.connecting_road
-                contact_point = connection.contact_point
-
-                contact_node_id = self.ways[connecting_road].nodes_id[0 if contact_point == 'start' else -1]
-                way_end = self.way_end_to_point(contact_node_id, incoming_road)
-
-                line1_nodes.append(
-                    self.nodes[self.ways[incoming_road].nodes_id[way_end]])
-
-                incomings.append(incoming_road)
-                ends.append(way_end)
-
-                # search and delete the incoming road in lane_link we just used
-                for i in range(len(lane_link)):
-                    if lane_link[i][0] == incoming_road:
+                inn = self.opendrive.roads[incoming_road].rn
+                con = self.opendrive.roads[connecting_road].rn
+                min = inn if inn < con else con
+                for i in range(min):
+                    connecting_way = self.opendrive.roads[connecting_road].start_rway_id + i
+                    incoming_way = self.opendrive.roads[incoming_road].start_rway_id + i
+                    contact_node_id = self.ways[connecting_way].nodes_id[0 if contact_point == 'start' else -1]
+                    way_end = self.way_end_to_point(contact_node_id, incoming_way)
+                    line1_nodes.append(
+                        self.nodes[self.ways[incoming_way].nodes_id[way_end]])
+                    incomings.append(incoming_way)
+                    ends.append(way_end)
+                    # search and delete the incoming road in lane_link we just used
+                # TODO
+                for j in range(len(lane_link)):
+                    if lane_link[j][0] == incoming_way:
                         del lane_link[i]
                         break
 
@@ -368,6 +247,8 @@ class Converter(object):
                 self.ways[incoming_road].nodes_id[way_end] = new_node_id
 
         return is_Tshape_junction
+
+    def addpoint12(connection, roadcnt):
 
 
     def handle_Xshape(self, junction):
