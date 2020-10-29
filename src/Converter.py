@@ -248,7 +248,9 @@ class Converter(object):
 
         return is_Tshape_junction
 
-    def addpoint12(connection, roadcnt):
+    def handle_Tshape_singleway(self, junction, roadcnt):
+        ret = 0
+        
 
 
     def handle_Xshape(self, junction):
