@@ -65,7 +65,7 @@ class RoadArc(RoadGeometry):
 
             array = list(range(n))  # from 0 to n-1
             
-            return radius, circlex, circley, [-start_angle + (angle * x / (n-1)) for x in array], array
+            return radius, circlex, circley, [start_angle - pi + (angle * x / (n-1)) for x in array], array
             
         # Otherwise it is clockwise
         else:
@@ -73,8 +73,7 @@ class RoadArc(RoadGeometry):
             circlex = self.x + (cos(start_angle) * radius)
             circley = self.y + (sin(start_angle) * radius)
             array = list(range(n))
-            
-            return radius, circlex, circley, [-start_angle - (angle * x / (n-1)) for x in array], array
+            return radius, circlex, circley, [start_angle + pi - (angle * x / (n-1)) for x in array], array
 
     def generate_coords(self, n):
         r, circle_x, circle_y, angles, array = self.base_arc(n)
@@ -82,11 +81,18 @@ class RoadArc(RoadGeometry):
         for n, s in zip(angles, array):
             x = circle_x + (r * cos(n))
             y = circle_y + (r * sin(n))
+            
+            if (x > 900):
+                print("error2")
+                print(r)
+                print(cos(n))
+                print(x)
+                print(circle_x)
             if self.curvature > 0:
                 self.points.append(Point(x, y, self.s + s, n + pi / 2))
             else:
                 self.points.append(Point(x, y, self.s + s, n - pi / 2))
-
+        
 class RoadSpiral(RoadGeometry):
     def __init__(self, s, x, y, hdg, length, curvstart, curvend):
         super(RoadSpiral, self).__init__(s, x, y, hdg, length, 'spiral')
@@ -145,4 +151,6 @@ class RoadSpiral(RoadGeometry):
     def generate_coords(self, n):
         xarr, yarr = self.evaluate_spiral(n)
         for i in range(n):
+            if (xarr[i] > 900):
+                print("error3")
             self.points.append(Point(xarr[i], yarr[i], i))
